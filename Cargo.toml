@@ -6,11 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-#reqwest = "0.11.22"
-reqwest = { version = "0.11", features = ["json"] }
-serde = { version = "1.0", features = ["derive"] }
-#serde = "1.0.192"
-#serde_json = "1.0.108"
-tokio = { version = "1", features = ["full"] }
-x509-parser = "0.15.1"
-#tokio = "1.34.0"
+base64 = "0.21.5"
+ctclient = "0.4.5"
+openssl = "0.10.61"
+reqwest = { version = "0.11.22", features = ["blocking"] }

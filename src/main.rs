@@ -1,41 +1,60 @@
-use reqwest;
-use serde::Deserialize;
-use tokio::time::{sleep, Duration};
+use ctclient::{CTClient, certutils};
+use ctclient::internal;
+use openssl::x509::X509;
+use std::io::Write;
+use base64::{prelude::*, engine::general_purpose};
+use reqwest::{
+    Url
+};
 
-#[derive(Deserialize)]
-struct CTResponse {
-    // Define the structure according to the JSON response of the API
-    // This is a placeholder example
-    entries: Vec<CertificateEntry>,
-}
-
-#[derive(Deserialize)]
-struct CertificateEntry {
-    // Adjust fields according to the API's response structure
-    leaf_input: String,
-}
-
-async fn fetch_certificates(url: &str) -> Result<Vec<CertificateEntry>, reqwest::Error> {
-    let resp = reqwest::get(url).await?.json::<CTResponse>().await?;
-    Ok(resp.entries)
-}
-
-#[tokio::main]
-async fn main() {
-    const POLL_INTERVAL: Duration = Duration::from_secs(5); // Interval between API calls
-    for i in 0..10 {
-        let CT_API_URL: String = format!("https://ct.googleapis.com/logs/argon2021/ct/v1/get-entries?start={}&end={}", i, i+10);
-
-        loop {
-            match fetch_certificates(&CT_API_URL).await {
-                Ok(certificates) => {
-                    for cert in &certificates {
-                        println!("New Certificate: {}", cert.leaf_input);
-                    }
-                }
-                Err(e) => println!("Error fetching certificates: {}", e),
-                }
-        }
-        sleep(POLL_INTERVAL).await;
+fn main() {
+    let public_key = general_purpose::STANDARD.decode(b"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0JCPZFJOQqyEti5M8j13ALN3CAVHqkVM4yyOcKWCu2yye5yYeqDpEXYoALIgtM3TmHtNlifmt+4iatGwLpF3eA==").unwrap();
+    const URL: &str = "https://ct.googleapis.com/logs/argon2023/";
+    let mut ctclient = CTClient::new_from_latest_th(URL, &public_key).unwrap();
+    let url: Url = Url::parse("https://ct.googleapis.com/logs/argon2023/").unwrap();
+    let mut client = internal::new_http_client().unwrap();
+    let mut entries = internal::get_entries(&client, &url, 0..1024);
+    for entry in entries {
+        println!("{:?}", entry.unwrap());
     }
+
+    // This lists all the new logs bug it doesn't go through the old ones.
+    // I need a way to save the old ones.
+    /*
+  if std::env::args_os().len() != 1 {
+    eprintln!("Expected no arguments.");
+    std::process::exit(1);
+  }
+
+  // URL and public key copy-pasted from https://www.gstatic.com/ct/log_list/v2/all_logs_list.json .
+  // Google's CT log updates very quickly so we use it here.
+  let public_key = general_purpose::STANDARD.decode(b"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0JCPZFJOQqyEti5M8j13ALN3CAVHqkVM4yyOcKWCu2yye5yYeqDpEXYoALIgtM3TmHtNlifmt+4iatGwLpF3eA==").unwrap();
+  // let public_key = ::decode("MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6Tx2p1yKY4015NyIYvdrk36es0uAc1zA4PQ+TGRY+3ZjUTIYY9Wyu+3q/147JG4vNVKLtDWarZwVqGkg6lAYzA==").unwrap();
+  const URL: &str = "https://ct.googleapis.com/logs/argon2023/";
+  let mut client = CTClient::new_from_latest_th(URL, &public_key).unwrap();
+  loop {
+    let update_result = client.update(Some(|certs: &[X509]| {
+      let leaf = &certs[0];
+      let ca = &certs[1];
+      let canames = certutils::get_common_names(ca).unwrap();
+      let caname = &canames[0];
+      if let Ok(domains) = certutils::get_dns_names(leaf) {
+        print!("{}: ", caname);
+        let mut first = true;
+        for d in domains.into_iter() {
+          if !first {
+            print!(", ");
+          }
+          print!("{}", d);
+          first = false;
+        }
+        print!("\n");
+      }
+    }));
+    if update_result.is_err() {
+      eprintln!("Error: {}", update_result.unwrap_err());
+    }
+    std::io::stdout().flush().unwrap();
+  }
+  */
 }
