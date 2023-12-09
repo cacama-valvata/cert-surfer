@@ -1,6 +1,6 @@
-use ctclient::{CTClient, certutils};
+//use ctclient::{CTClient};
 use ctclient::internal;
-use openssl::x509::X509;
+use openssl::x509::{X509, X509Name};
 use std::io::Write;
 use base64::{prelude::*, engine::general_purpose};
 use reqwest::{
@@ -9,13 +9,19 @@ use reqwest::{
 
 fn main() {
     let public_key = general_purpose::STANDARD.decode(b"MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE0JCPZFJOQqyEti5M8j13ALN3CAVHqkVM4yyOcKWCu2yye5yYeqDpEXYoALIgtM3TmHtNlifmt+4iatGwLpF3eA==").unwrap();
-    const URL: &str = "https://ct.googleapis.com/logs/argon2023/";
-    let mut ctclient = CTClient::new_from_latest_th(URL, &public_key).unwrap();
     let url: Url = Url::parse("https://ct.googleapis.com/logs/argon2023/").unwrap();
-    let mut client = internal::new_http_client().unwrap();
-    let mut entries = internal::get_entries(&client, &url, 0..1024);
-    for entry in entries {
-        println!("{:?}", entry.unwrap());
+    let client = internal::new_http_client().unwrap();
+    let entries = internal::get_entries(&client, &url, 0..1000);
+    for entry_result in entries {
+        let entry = entry_result.unwrap();
+        if !entry.is_pre_cert {
+            if let Some(cert_data) = entry.x509_chain.first() {
+                let cert = X509::from_der(cert_data).unwrap();
+                let name = cert.subject_name();
+                let name = name.entries().next().unwrap().data().as_utf8().unwrap();
+                println!("{}", name);
+            }
+        }
     }
 
     // This lists all the new logs bug it doesn't go through the old ones.
